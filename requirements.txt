@@ -1,0 +1,4 @@
+altair
+google-genai
+pandas
+streamlit
