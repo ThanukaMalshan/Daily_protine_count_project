@@ -50,7 +50,6 @@ html,body,.stApp{font-family:'Inter',sans-serif;font-variant-numeric:tabular-num
 .stApp{background:#0b0f19;background-image:radial-gradient(600px 300px at 80% -5%,#b6f50014,transparent),radial-gradient(500px 300px at 0 100%,#2f7bff12,transparent);color:#e5e7eb}
 #MainMenu,footer,header[data-testid="stHeader"]{visibility:hidden}
 .block-container{max-width:1050px;padding-top:1.5rem}
-section[data-testid="stSidebar"]{background:#0e1422;border-right:1px solid #1f293d}
 
 div[data-testid="stVerticalBlockBorderWrapper"]{
     background:linear-gradient(180deg,#141b2b,#0f1522);
@@ -80,8 +79,6 @@ h1,h2,h3,p,label,span,div{color:#e5e7eb}
 .h2{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;margin-bottom:12px}
 .ib{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#b6f50014;color:#b6f500;border:1px solid #b6f50030;transition:0.3s}
 .ib:hover{background:#b6f50030;transform:scale(1.05)}
-.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;margin-bottom:6px}
-.logo span{width:32px;height:32px;border-radius:10px;background:#b6f500;color:#0b0f19;display:grid;place-items:center}
 .prog{display:flex;gap:18px;align-items:center}
 .ring{position:relative;width:96px;height:96px;flex:none}
 .ring svg{transform:rotate(-90deg)}
@@ -98,10 +95,6 @@ h1,h2,h3,p,label,span,div{color:#e5e7eb}
 .item:hover{transform:translateX(4px)}
 .tag{width:10px;height:10px;border-radius:50%;flex:none}
 .item b{text-transform:capitalize}
-.streak{border:1px solid #1f293d;border-radius:14px;padding:12px;text-align:center;color:#8b95a8;font-size:13px;margin-top:18px;background:#11182788;backdrop-filter:blur(5px)}
-.streak b{display:block;font-size:26px;color:#b6f500}
-.streak .f{display:inline-block;color:#b6f500;animation:flick 1.4s infinite}
-@keyframes flick{50%{transform:scale(1.2) rotate(-6deg)}}
 
 .stButton>button{border-radius:12px;background:#0f1522;color:#e5e7eb;border:1px solid #1f293d;font-weight:600;transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1)}
 .stButton>button:hover{border-color:#2f7bff;color:#2f7bff;transform:translateY(-2px);box-shadow:0 6px 16px #2f7bff22}
@@ -174,24 +167,19 @@ def header(title, name):
         html(f"<div class='who' style='justify-content: flex-end;'>{name}<span class='dot'></span><span class='av'>{icon('user', 20)}</span></div>")
 
 
-# ---------------------------------------------------------------- sidebar setup
+# ---------------------------------------------------------------- database & session setup
 profiles = db.get_all_profiles()
 names = [p[0] for p in profiles]
+
 st.session_state.setdefault("fg", 100.0)
 st.session_state.setdefault("fn", "")
 st.session_state.setdefault("page", DASH)
 
-with st.sidebar:
-    html(f"<div class='logo'><span>{icon('bolt', 18)}</span>FuelUp</div>")
-    if profiles:
-        st.selectbox("Active profile", names, key="active")
-        active_prof_name = st.session_state.get("active", names[0] if names else "")
-        streak_count = db.get_streak(active_prof_name) if active_prof_name else 0
-        html(f"<div class='streak'><span class='f'>{icon('flame', 26)}</span>"
-             f"<b>{streak_count}</b>day streak</div>")
-    else:
-        st.session_state.page = PROFILES
-        st.caption("Create your first profile to begin.")
+if names:
+    if "active" not in st.session_state or st.session_state.active not in names:
+        st.session_state.active = names[0]
+else:
+    st.session_state.page = PROFILES
 
 page = st.session_state.get("page", DASH)
 active_name = st.session_state.get("active")
@@ -215,13 +203,12 @@ if page == DASH and prof:
         section("Food logging", "bowl")
         all_food_items = [f[0] for f in db.get_all_foods()]
         
-        # Streamlined layout: Food select box, Grams input, and Add button side by side
         col_f, col_g, col_btn = st.columns([3, 1.5, 1.2])
         selected_food = col_f.selectbox("Select food item", [""] + all_food_items, key="fn")
         grams = col_g.number_input("Grams", min_value=1.0, step=10.0, key="fg")
         
         with col_btn:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # spacing alignment
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if st.button("Add to log", type="primary", use_container_width=True):
                 add_log()
                 st.rerun()
@@ -285,6 +272,16 @@ if page == DASH and prof:
 # ================================================================ PAGE 2: PROFILES ONLY
 elif page == PROFILES:
     header(PROFILES, prof[0] if prof else "New user")
+    
+    # Quick Profile Switcher Box for multi-user support
+    if profiles:
+        with st.container(border=True):
+            section("Switch active profile", "users")
+            selected_active = st.selectbox("Select profile to view/edit", names, index=names.index(active_name) if active_name in names else 0)
+            if selected_active != active_name:
+                st.session_state.active = selected_active
+                st.rerun()
+
     with st.container(border=True):
         section("Setup / update profile (Weight Gainer)", "user")
         cur = prof or ("Thanuka", 63.0, 175.0, "Weight Gain", 126.0, 2400.0)
@@ -298,18 +295,21 @@ elif page == PROFILES:
             
             st.info("💡 **Weight Gainer Formula:** Protein target = Weight × 2 (g). Maintenance calories estimated automatically with +200 kcal added for surplus.")
             
-            if st.form_submit_button("Save & Calculate Targets"):
-                if pname.strip():
-                    calc_protein = weight * 2.0
-                    est_maintenance = (10 * weight) + (6.25 * height) - (5 * 22) + 5
-                    calc_calories = est_maintenance + 200
-                    
-                    db.save_user_profile(pname.strip(), weight, height, "Weight Gain", calc_protein, calc_calories)
-                    st.session_state.active = pname.strip()
-                    st.success(f"Profile saved! Target Protein set to {calc_protein:.0f}g, Target Calories set to {calc_calories:.0f} kcal.")
-                    st.rerun()
-                else:
-                    st.warning("Please enter a unique profile name.")
+            submitted = st.form_submit_button("Save & Calculate Targets")
+
+        if submitted:
+            clean_pname = pname.strip()
+            if clean_pname:
+                calc_protein = weight * 2.0
+                est_maintenance = (10 * weight) + (6.25 * height) - (5 * 22) + 5
+                calc_calories = est_maintenance + 200
+                
+                db.save_user_profile(clean_pname, weight, height, "Weight Gain", calc_protein, calc_calories)
+                st.session_state.active = clean_pname
+                st.success(f"Profile saved! Target Protein set to {calc_protein:.0f}g, Target Calories set to {calc_calories:.0f} kcal.")
+                st.rerun()
+            else:
+                st.warning("Please enter a unique profile name.")
 
     with st.container(border=True):
         section("All saved profiles", "users")
@@ -335,12 +335,14 @@ else:
             fprot = f2.number_input("Protein (g) per 100g", min_value=0.0, step=0.1)
             fcal = f3.number_input("Calories (kcal) per 100g", min_value=0.0, step=1.0)
             
-            if st.form_submit_button("Add food to database") and fname.strip():
-                clean_name = fname.strip().lower()
-                db.add_new_food(clean_name, fprot, fcal)
-                st.success(f"Added '{clean_name}' successfully!")
-                st.rerun()
-                
+            submitted_food = st.form_submit_button("Add food to database")
+
+        if submitted_food and fname.strip():
+            clean_name = fname.strip().lower()
+            db.add_new_food(clean_name, fprot, fcal)
+            st.success(f"Added '{clean_name}' successfully!")
+            st.rerun()
+            
         all_foods = db.get_all_foods()
         for f_name, f_prot, f_cal in all_foods:
             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
